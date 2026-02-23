@@ -1,0 +1,169 @@
+================================================================================
+VERSION WILDCARD CLEANUP (SCHEDULED) - SETUP GUIDE
+================================================================================
+
+--------------------------------------------------------------------------------
+PART 1: WHAT IT DOES
+--------------------------------------------------------------------------------
+
+Scheduled worker that runs on a cron schedule and deletes old CI build
+artifacts while keeping the N most recent versions per component.
+
+Supports: npm, NuGet, PyPI, Maven, Docker, and generic repositories.
+
+Configuration is read from Worker Properties (JFrog Platform UI), not from a
+payload, since scheduled workers do not receive payloads at execution time.
+
+
+--------------------------------------------------------------------------------
+PART 2: HOW IT WORKS (4 STEPS)
+--------------------------------------------------------------------------------
+
+STEP 1 - SCHEDULE TRIGGERS
+  - JFrog Platform runs the worker at the configured cron time
+  - No payload is passed; worker reads from context.properties
+
+STEP 2 - LOAD CONFIG FROM PROPERTIES
+  - repos (required): comma-separated or JSON array
+  - versionPattern, retainCount, pathPrefix, dryRun, limit, concurrency, sortByVersion
+
+STEP 3 - FIND ARTIFACTS (AQL)
+  - Uses Artifactory Query Language to search for files in the given repos
+  - Optional pathPrefix narrows the search
+  - Results sorted by modified date (newest first)
+  - Limited by "limit" param
+
+STEP 4 - COMPUTE AND DELETE
+  - Filters artifacts whose path contains a version (by pattern or auto-detect)
+  - Groups by component, keeps retainCount newest
+  - Deletes the rest (or logs only if dryRun=true)
+
+
+--------------------------------------------------------------------------------
+PART 3: WORKER PROPERTIES
+--------------------------------------------------------------------------------
+
+Configure in JFrog Platform: Worker Settings → Properties tab.
+
+  repos            [REQUIRED]  Comma-separated: libs-snapshot-local,libs-release-local
+                               Or JSON: ["libs-snapshot-local"]
+
+  versionPattern   [optional]  "auto" (default), "ci-build-1", "ci-build-2", or custom regex
+  retainCount      [optional]  Versions to keep per component (default: 3)
+  sortByVersion    [optional]  "true" or "false" (default: false)
+  pathPrefix       [optional]  AQL path prefix (e.g., "com/example/")
+  dryRun           [optional]  "true" = log only; "false" = delete (default: false)
+  limit            [optional]  Max artifacts to consider (default: 200)
+  concurrency      [optional]  Parallel deletes (default: 10)
+
+VERSION PATTERNS:
+  auto        ->  Detects any numeric version: 1, 1.2, 1.2.3, 1.2.3-45.6, etc.
+  ci-build-1  ->  *.*.*-*.*     (e.g., 1.2.3-45.6)
+  ci-build-2  ->  *.*.*-*.*.   (e.g., 1.2.3-45.6. with trailing dot)
+
+
+--------------------------------------------------------------------------------
+PART 4: DEPLOYMENT AND SETUP
+--------------------------------------------------------------------------------
+
+STEP A: DEPLOY THE WORKER
+-------------------------
+  jf worker deploy
+
+  (Add --server-id YOUR_SERVER_ID if needed)
+
+
+STEP B: CONFIGURE WORKER PROPERTIES
+-----------------------------------
+  In the JFrog Platform UI:
+  1. Go to Workers → version-wildcard-cleanup-scheduled → Settings
+  2. Open the "Properties" tab
+  3. Add the following properties:
+
+     Key            Value
+     ----           -----
+     repos          libs-snapshot-local
+     versionPattern auto
+     retainCount    3
+     sortByVersion  true
+     dryRun         true
+     limit          200
+
+  Start with dryRun=true to verify behavior before enabling deletions.
+
+
+STEP C: SET THE SCHEDULE
+------------------------
+  jf worker edit-schedule --cron "0 2 * * *"
+
+  This runs daily at 2:00 AM (UTC). Adjust cron as needed:
+
+  Every 6 hours:    0 */6 * * *
+  Weekly (Sunday):  0 0 * * 0
+  Every day at 3 AM: 0 3 * * *
+
+  Use --timezone for non-UTC: --timezone "America/New_York"
+
+
+STEP D: ENABLE THE WORKER
+-------------------------
+  In Worker Settings, turn the "Enable Worker" toggle ON.
+
+
+--------------------------------------------------------------------------------
+PART 5: EXAMPLE PROPERTY CONFIGURATIONS
+--------------------------------------------------------------------------------
+
+Minimal (one repo, dry run):
+  repos=libs-snapshot-local
+  dryRun=true
+
+Multiple repos:
+  repos=libs-snapshot-local,libs-release-local
+  retainCount=2
+  dryRun=true
+
+With path scope:
+  repos=libs-snapshot-local
+  pathPrefix=com/example/
+  dryRun=true
+
+Production (real deletes):
+  repos=libs-snapshot-local
+  versionPattern=auto
+  retainCount=3
+  sortByVersion=true
+  dryRun=false
+  limit=500
+
+
+--------------------------------------------------------------------------------
+PART 6: TROUBLESHOOTING
+--------------------------------------------------------------------------------
+
+  - "repos must be specified": Add the "repos" property in Worker Settings
+
+  - "Cannot find module jfrog-workers": Use the types/jfrog-workers.d.ts
+    declaration for local IDE/TypeScript.
+
+  - AQL returns no results: Check repo key, pathPrefix, and that you have
+    artifacts with version-like paths.
+
+  - Worker not running: Ensure the worker is enabled and the schedule is set.
+    Check execution history: jf worker execution-history
+
+  - Auth errors: The worker runs with Platform credentials; ensure your
+    Platform instance has access to Artifactory.
+
+
+--------------------------------------------------------------------------------
+PART 7: BEST PRACTICES
+--------------------------------------------------------------------------------
+
+  1. Always set dryRun=true first and verify execution logs
+  2. Use pathPrefix to limit scope (e.g., com/example/)
+  3. Start with a small limit (e.g., 50) to verify behavior
+  4. Adjust retainCount based on your CI build frequency
+  5. Use sortByVersion=true with auto mode for predictable version-based retention
+
+================================================================================

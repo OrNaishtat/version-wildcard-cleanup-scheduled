@@ -1,0 +1,16 @@
+{
+  "name": "version-wildcard-cleanup-scheduled",
+  "description": "Scheduled worker: deletes artifacts matching version patterns, retaining the latest N versions per component. Configure via Worker Properties.",
+  "sourceCodePath": "./worker.ts",
+  "action": "SCHEDULED_EVENT",
+  "enabled": true,
+  "debug": true,
+  "projectKey": "",
+  "secrets": {},
+  "filterCriteria": {
+    "schedule": {
+      "cron": "0 2 * * *",
+      "timezone": "UTC"
+    }
+  }
+}

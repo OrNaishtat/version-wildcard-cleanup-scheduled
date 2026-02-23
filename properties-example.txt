@@ -1,0 +1,27 @@
+================================================================================
+WORKER PROPERTIES - CONFIGURE IN JFROG PLATFORM UI
+================================================================================
+
+In Worker Settings → Properties tab, add these key-value pairs:
+
+  repos            libs-snapshot-local,libs-release-local
+                   (comma-separated) or JSON: ["libs-snapshot-local"]
+
+  versionPattern   auto
+                   (auto | ci-build-1 | ci-build-2 | custom regex)
+
+  retainCount      3
+
+  sortByVersion    true
+
+  pathPrefix       com/example/
+                   (optional, AQL path prefix)
+
+  dryRun           false
+                   (true = log only, no deletes)
+
+  limit            200
+
+  concurrency      10
+
+================================================================================
